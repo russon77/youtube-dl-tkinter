@@ -1,0 +1,12 @@
+Youtube DL -- now with a graphical user interface!
+
+You must have Tkinter installed.
+
+Licensed GPLv3+.
+
+Currently supports adding youtube links and setting the location.
+
+Todo:
+clean up GUI
+clean up code organization
+add in error handling

@@ -1,5 +1,6 @@
 from tkinter import *
 from tkinter.filedialog import askdirectory
+from tkinter.ttk import Treeview
 from threading import Thread
 import os
 import youtube_dl
@@ -17,6 +18,39 @@ class VideoDownload(object):
         }
 
         self.info = None
+
+    def to_columns(self):
+        if self.info is None:
+            return self.url, self.status["status"], "", "", ""
+
+        percent = "unknown"
+        if self.status["status"] == "finished":
+            percent = "100%"
+        elif self.status.get("downloaded_bytes", None) and self.status.get("total_bytes", None):
+            percent = "%.2f%%" % (self.status["downloaded_bytes"] / self.status["total_bytes"] * 100.0)
+
+        # todo format speed
+        speed = ""
+        if self.status.get("speed"):
+            speed = "%.1f kB/s" % (self.status["speed"] / 1000.0)
+
+        eta = ""
+        if self.status.get("eta"):
+            seconds = self.status["eta"]
+
+            if seconds > 3600:
+                eta = ">1 hour"
+            elif seconds > 60:
+                eta = "%d:%2d" % (seconds / 60, seconds % 60)
+            else:
+                eta = "%2d" % seconds
+
+        return self.info.get("title", self.url), \
+               self.status["status"], \
+               percent, \
+               speed, \
+               eta, \
+               self.status.get("error", "")
 
     def __str__(self):
         if self.info:
@@ -38,19 +72,18 @@ class MyApp(object):
         self.button_add_video = Button(self.buttons_frame, text="Add", command=self.new_single_video_callback)
         self.button_add_video.pack(side=LEFT)
 
-        self.button_add_video_in_bulk = Button(self.buttons_frame, text="Add bulk")
-        self.button_add_video_in_bulk.pack(side=LEFT)
-
         # these are context-sensitive buttons. i.e they will only work if the user has selected something in the
         #  listbox
         self.button_remove_download_from_list = Button(self.buttons_frame, text="Remove")
         self.button_remove_download_from_list.pack(side=LEFT)
 
-        # add in our list box -- to the master reference
-        self.videos_listbox = Listbox(master, selectmode=EXTENDED, exportselection=0)
-        self.videos_listbox.pack(fill=BOTH, expand=1)
+        # let's switch it up and use a treeview
+        self.videos_treeview = Treeview(master, columns=('Name', 'Status', 'Percent', 'Speed', 'Remaining', 'Error'))
 
-        self.videos_listbox.bind("<Double-Button-1>", lambda x: print(self.videos_listbox.curselection()))
+        [self.videos_treeview.heading(x, text=x) for x in self.videos_treeview['columns']]
+        self.videos_treeview.column("#0", width=10)
+
+        self.videos_treeview.pack(fill=BOTH, expand=1)
 
         # initialize our list of current video downloads
         self.videos = []
@@ -59,10 +92,10 @@ class MyApp(object):
         self.update_video_ui_repeating(master)
 
     def update_video_ui_repeating(self, widget):
-        # to update the listbox, remove all elements and then re-insert them
-        # if this were an expensive operation, we could check if there is any difference in state between updates
-        self.videos_listbox.delete(0, END)
-        self.videos_listbox.insert(END, *[str(x) for x in self.videos])
+        # todo figure out how to do this the... right way
+        self.videos_treeview.delete(*self.videos_treeview.get_children())
+        for vid in self.videos:
+            self.videos_treeview.insert("", "end", text="", values=vid.to_columns())
 
         # update again in one second.
         widget.after(1, lambda: self.update_video_ui_repeating(widget))

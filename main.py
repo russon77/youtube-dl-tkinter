@@ -100,7 +100,7 @@ class MyApp(object):
         destination = destination()
 
         # check for valid url
-        if not re.match(r"https?:\/\/(www\.)?youtube.com\/watch\?v=\w+", url):
+        if not re.match(r"https?://(www\.)?youtube.com/watch\?v=\w+", url):
             # add in error to bottom of frame
             error = Label(frame, text="Not a Youtube URL")
         # check for valid save location

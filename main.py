@@ -58,11 +58,17 @@ class MyApp(object):
         self.update_video_ui_repeating(master)
 
     def update_video_ui_repeating(self, widget):
+        # to update the listbox, remove all elements and then re-insert them
+        # if this were an expensive operation, we could check if there is any difference in state between updates
         self.videos_listbox.delete(0, END)
         self.videos_listbox.insert(END, *[str(x) for x in self.videos])
-        self.videos_listbox.pack()
 
+        # update again in one second.
         widget.after(1, lambda: self.update_video_ui_repeating(widget))
+
+    @staticmethod
+    def download_progress_hook(video_download, status):
+        video_download.status = status
 
     @staticmethod
     def start_download(video_download):
@@ -79,13 +85,6 @@ class MyApp(object):
         with youtube_dl.YoutubeDL(ydl_opts) as ydl:
             ydl.download([video_download.url])
 
-    def progress_hook_experiment(self, d):
-        pass
-
-    @staticmethod
-    def download_progress_hook(video_download, status):
-        video_download.status = status
-
     def create_video_download(self, url, download_opts, callback):
         video_download = VideoDownload(url, download_opts)
         self.videos.append(video_download)
@@ -96,33 +95,53 @@ class MyApp(object):
     def new_single_video_callback(self):
         top = Toplevel()
         top.title("New download")
+        top.resizable(False, False)
 
-        msg = Message(top, text="URL")
-        msg.pack(side=LEFT)
+        # set up the add video dialog box
+        frame_url = Frame(top)
+        frame_url.pack()
 
-        e = Entry(top)
+        msg_url = Message(frame_url, text="URL")
+        msg_url.pack(side=LEFT)
+
+        e = Entry(frame_url)
         e.pack(side=LEFT)
 
-        # todo optional options for download
-        # todo download path / destination
+        frame_destination = Frame(top)
+        frame_destination.pack()
 
-        path = StringVar(value="/")
-        path_lbl = Label(top, textvariable=path)
-        path_lbl.pack()
+        # todo more options
 
-        d = Button(top, text="download location", command=lambda: path.set(askdirectory()))
-        d.pack(side=BOTTOM)
+        # using a StringVar allows us to easily update the Label, in addition to storing the destination path
+        dest_label = Label(frame_destination, text="Target")
+        dest_label.pack()
 
+        path = StringVar(value="/your/path/here/")
+        path_lbl = Label(frame_destination, textvariable=path)
+        path_lbl.pack(side=LEFT, fill=X)
+        path_lbl.bind("<Button-1>", lambda _: path.set(askdirectory()))
 
+        # outtmpl is the template to use when writing the video file to disk
         opts = {
             'outtmpl': os.path.join(path.get(), '%(title)s-%(id)s.%(ext)s')
         }
 
-        submit = Button(top, text="Go", command=lambda: self.create_video_download(e.get(), opts, top.destroy))
+        frame_actions = Frame(top)
+        frame_actions.pack()
+
+        submit = Button(frame_actions, text="Go", command=lambda: self.create_video_download(e.get(), opts, top.destroy))
         submit.pack(side=LEFT)
 
+        cancel = Button(frame_actions, text="Cancel", command=top.destroy)
+        cancel.pack(side=LEFT)
+
+# initialize tkinter
 root = Tk()
 
+# create an instance of our application with root as the main container
 app = MyApp(root)
 
+# run the event loop
 root.mainloop()
+
+# cleanup is unnecessary, Python handles this at the end of a script

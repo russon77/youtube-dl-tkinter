@@ -5,10 +5,24 @@ from threading import Thread
 import os
 import youtube_dl
 import re
+import subprocess
+import sys
+
+# from stackoverflow -- with a few modifications
+# http://stackoverflow.com/questions/6631299/python-opening-a-folder-in-explorer-nautilus-mac-thingie
+if sys.platform == 'darwin':
+    def open_folder(path):
+        subprocess.check_call(['open', '--', path])
+elif sys.platform == 'linux':
+    def open_folder(path):
+        subprocess.check_call(['xdg-open', path])
+elif sys.platform == 'win32':
+    def open_folder(path):
+        subprocess.check_call(['explorer', path])
 
 
 class VideoDownload(object):
-    def __init__(self, url, download_opts, path="/"):
+    def __init__(self, url, download_opts, path):
         self.url = url
         self.download_opts = download_opts
         self.path = path
@@ -18,6 +32,8 @@ class VideoDownload(object):
         }
 
         self.info = None
+
+        self.tree_id = None
 
     def to_columns(self):
         if self.info is None:
@@ -74,11 +90,14 @@ class MyApp(object):
 
         # these are context-sensitive buttons. i.e they will only work if the user has selected something in the
         #  listbox
-        self.button_remove_download_from_list = Button(self.buttons_frame, text="Remove")
+        self.button_remove_download_from_list = Button(self.buttons_frame, text="Remove", command=self.on_remove)
         self.button_remove_download_from_list.pack(side=LEFT)
 
         # let's switch it up and use a treeview
-        self.videos_treeview = Treeview(master, columns=('Name', 'Status', 'Percent', 'Speed', 'Remaining', 'Error'))
+        self.videos_treeview = Treeview(master,
+                                        selectmode=EXTENDED,
+                                        columns=('Name', 'Status', 'Percent', 'Speed', 'Remaining', 'Error'))
+        self.videos_treeview.bind("<Double-1>", self.on_treeview_double_click)
 
         [self.videos_treeview.heading(x, text=x) for x in self.videos_treeview['columns']]
         self.videos_treeview.column("#0", width=10)
@@ -86,19 +105,48 @@ class MyApp(object):
         self.videos_treeview.pack(fill=BOTH, expand=1)
 
         # initialize our list of current video downloads
-        self.videos = []
+        self.videos_not_displayed = []
+        self.videos_displayed = {}
 
         # start the regular ui updates
         self.update_video_ui_repeating(master)
 
-    def update_video_ui_repeating(self, widget):
-        # todo figure out how to do this the... right way
-        self.videos_treeview.delete(*self.videos_treeview.get_children())
-        for vid in self.videos:
-            self.videos_treeview.insert("", "end", text="", values=vid.to_columns())
+    def on_remove(self):
+        indices = self.videos_treeview.selection()
 
-        # update again in one second.
-        widget.after(1, lambda: self.update_video_ui_repeating(widget))
+        for index in indices:
+            self.videos_displayed.pop(index, None)
+            self.videos_treeview.delete(index)
+
+    def on_treeview_double_click(self, event):
+        index = self.videos_treeview.focus()
+
+        if index == "":
+            return
+
+        selection = self.videos_displayed[index]
+
+        path = selection.path
+
+        open_folder(path)
+
+    def update_video_ui_repeating(self, widget):
+        # hoorah, we did it the right way!
+        children = self.videos_treeview.get_children()
+        for child in children:
+            self.videos_treeview.item(child, text="", values=self.videos_displayed[child].to_columns())
+
+        # process any videos not currently in the tree:
+        #  add them to the tree, saving the id
+        #  add the video to the hash table holding them
+        for vid in self.videos_not_displayed:
+            key = self.videos_treeview.insert("", "end", text="", values=vid.to_columns())
+            self.videos_displayed[key] = vid
+
+        self.videos_not_displayed.clear()
+
+        # update again in 500 ms.
+        widget.after(500, lambda: self.update_video_ui_repeating(widget))
 
     @staticmethod
     def download_progress_hook(video_download, status):
@@ -119,9 +167,9 @@ class MyApp(object):
         with youtube_dl.YoutubeDL(ydl_opts) as ydl:
             ydl.download([video_download.url])
 
-    def create_video_download(self, url, download_opts):
-        video_download = VideoDownload(url, download_opts)
-        self.videos.append(video_download)
+    def create_video_download(self, url, download_opts, path):
+        video_download = VideoDownload(url, download_opts, path)
+        self.videos_not_displayed.append(video_download)
         thread = Thread(target=self.start_download, args=(video_download,))
         thread.start()
 
@@ -151,7 +199,7 @@ class MyApp(object):
         }
 
         # okay, all checks pass
-        self.create_video_download(url, opts)
+        self.create_video_download(url, opts, destination)
 
         on_success()
 
@@ -182,7 +230,10 @@ class MyApp(object):
         path_var = StringVar(value="/your/path/here/")
         path_lbl = Label(frame_destination, textvariable=path_var)
         path_lbl.pack(side=LEFT, fill=X)
-        path_lbl.bind("<Button-1>", lambda _: path_var.set(askdirectory()))
+        # fancy lambdas to prevent emptying `path_var` upon cancelling the dialog
+        path_lbl.bind("<Button-1>",
+                      lambda _: path_var.set(
+                          (lambda d: d if len(d) else path_var.get())(askdirectory())))
 
         frame_actions = Frame(top)
         frame_actions.pack()

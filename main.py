@@ -3,6 +3,7 @@ from tkinter.filedialog import askdirectory
 from threading import Thread
 import os
 import youtube_dl
+import re
 
 
 class VideoDownload(object):
@@ -85,12 +86,41 @@ class MyApp(object):
         with youtube_dl.YoutubeDL(ydl_opts) as ydl:
             ydl.download([video_download.url])
 
-    def create_video_download(self, url, download_opts, callback):
+    def create_video_download(self, url, download_opts):
         video_download = VideoDownload(url, download_opts)
         self.videos.append(video_download)
         thread = Thread(target=self.start_download, args=(video_download,))
         thread.start()
-        callback()
+
+    def submit_new_video_for_download(self, frame, url, destination, on_success):
+        error = None
+
+        # we are passed references to functions containing the values
+        url = url()
+        destination = destination()
+
+        # check for valid url
+        if not re.match(r"https?:\/\/(www\.)?youtube.com\/watch\?v=\w+", url):
+            # add in error to bottom of frame
+            error = Label(frame, text="Not a Youtube URL")
+        # check for valid save location
+        elif False:
+            pass
+
+        if error:
+            error.pack()
+
+            return
+
+        # outtmpl is the template to use when writing the video file to disk
+        opts = {
+            'outtmpl': os.path.join(destination, '%(title)s-%(id)s.%(ext)s')
+        }
+
+        # okay, all checks pass
+        self.create_video_download(url, opts)
+
+        on_success()
 
     def new_single_video_callback(self):
         top = Toplevel()
@@ -116,20 +146,17 @@ class MyApp(object):
         dest_label = Label(frame_destination, text="Target")
         dest_label.pack()
 
-        path = StringVar(value="/your/path/here/")
-        path_lbl = Label(frame_destination, textvariable=path)
+        path_var = StringVar(value="/your/path/here/")
+        path_lbl = Label(frame_destination, textvariable=path_var)
         path_lbl.pack(side=LEFT, fill=X)
-        path_lbl.bind("<Button-1>", lambda _: path.set(askdirectory()))
-
-        # outtmpl is the template to use when writing the video file to disk
-        opts = {
-            'outtmpl': os.path.join(path.get(), '%(title)s-%(id)s.%(ext)s')
-        }
+        path_lbl.bind("<Button-1>", lambda _: path_var.set(askdirectory()))
 
         frame_actions = Frame(top)
         frame_actions.pack()
 
-        submit = Button(frame_actions, text="Go", command=lambda: self.create_video_download(e.get(), opts, top.destroy))
+        submit = Button(frame_actions,
+                        text="Go",
+                        command=lambda: self.submit_new_video_for_download(top, e.get, path_var.get, top.destroy))
         submit.pack(side=LEFT)
 
         cancel = Button(frame_actions, text="Cancel", command=top.destroy)
